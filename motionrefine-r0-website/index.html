@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MotionRefine-R0: Reinforcing 3D Human Motion Generation with Physical and Semantic Refinement</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <div class="container">
+    <p class="venue">Under Review</p>
+    <h1 class="paper-title">MotionRefine-R0: Reinforcing 3D Human Motion Generation<br>with Physical and Semantic Refinement</h1>
+    <p class="authors">Anonymous Authors</p>
+    <div class="hero-links">
+      <a href="#" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Paper
+      </a>
+      <a href="#" class="btn btn-outline">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>
+        arXiv
+      </a>
+      <a href="#" class="btn btn-outline">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        Code
+      </a>
+      <a href="#" class="btn btn-outline">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Dataset
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TEASER ============ -->
+<section id="teaser">
+  <div class="container">
+    <figure class="teaser-figure">
+      <img src="static/images/teaser.png" alt="MotionRefine-R0 refines motions from any frozen base generator in a single forward pass." loading="lazy">
+      <figcaption>
+        <strong>MotionRefine-R0 refines motions from any frozen base generator in a single forward pass.</strong>
+        <em>Top</em>: MoMask (263D discrete VQ) &mdash; our policy corrects physical artifacts (compressed skeleton, foot skating), bringing joint positions closely toward the ground truth (64.3% MPJPE reduction).
+        <em>Bottom</em>: HY-Motion (201D continuous SMPL-H) &mdash; the policy adjusts temporal pose trajectories for better semantic alignment with the text description, while preserving the inherent physical quality.
+        All MoMask results averaged over 3 random seeds. Keyframes at uniform time intervals.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ ABSTRACT ============ -->
+<section id="abstract">
+  <div class="container">
+    <h2>Abstract</h2>
+    <div class="abstract-text">
+      <p>
+        Recent generative models synthesize diverse 3D human motions from text, yet their outputs suffer from physical artifacts (foot skating, ground penetration) and fine-grained semantic misalignment.
+        Existing refinement methods rely on high-variance RL estimators, expensive physics simulators, or iterative test-time optimization, and none generalizes across generator architectures.
+      </p>
+      <p>
+        We present <strong>MotionRefine-R0</strong>, a single-stage reinforcement learning framework that refines motions from any frozen base generator via <em>reparameterization policy gradient</em> (RPG).
+        Our framework combines: (1) a stochastic cross-attention residual policy with fully differentiable rewards enabling low-variance pathwise gradient updates, and (2) <em>Temporal Contrastive Semantic Alignment</em> (TCSA), a dense per-second contrastive reward for fine-grained temporal text-motion correspondence.
+      </p>
+      <p>
+        Without any generator-specific modification, a single lightweight 17.7M-parameter policy, adding only <strong>2&thinsp;ms</strong> inference overhead (no simulator required), refines four structurally different generators: MoMask (263D discrete VQ), MDM (263D continuous diffusion), MLD (263D latent diffusion), and HY-Motion (201D SMPL-H), achieving <strong>64.3%</strong>, <strong>84.0%</strong>, <strong>68.6%</strong>, and 35.2% MPJPE reduction respectively, with 74.0% foot skating elimination on MoMask and 96.0% on MDM, all while maintaining FID below 1.0.
+        Each policy trains in ~3 GPU-hours on a single RTX 3090.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ METHOD ============ -->
+<section id="method">
+  <div class="container">
+    <h2>Method Overview</h2>
+    <figure class="pipeline-figure">
+      <img src="static/images/figure.png" alt="Overview of MotionRefine-R0 training and inference pipelines" loading="lazy">
+      <figcaption>
+        <strong>(a) Training:</strong> The frozen generator produces x<sub>base</sub>, refined by the cross-attention policy &pi;<sub>&theta;</sub> via stochastic residual &Delta;. The composite reward R (physics + TCSA + reconstruction) is fully differentiable, enabling low-variance RPG updates through the reparameterization trick.
+        <strong>(b) Inference:</strong> The trained policy produces a deterministic mean correction &Delta;* = &mu;<sub>&theta;</sub> in a single forward pass (~2&thinsp;ms overhead), applicable to any base generator without modification.
+      </figcaption>
+    </figure>
+
+    <div class="method-summary">
+      <div class="method-card">
+        <h3>Reparameterization Policy Gradient (RPG)</h3>
+        <p>
+          We model the policy as a diagonal Gaussian that generates continuous residual corrections.
+          Using the reparameterization trick, we sample &Delta; = &mu;<sub>&theta;</sub> + &sigma;<sub>&theta;</sub> &odot; &epsilon; and backpropagate differentiable reward gradients directly through the policy parameters.
+          This yields significantly lower variance than REINFORCE in the high-dimensional T&times;D action space, enabling stable single-step updates without multi-step rollouts or value function learning.
+        </p>
+      </div>
+      <div class="method-card">
+        <h3>Temporal Contrastive Semantic Alignment (TCSA)</h3>
+        <p>
+          Global text-motion metrics collapse temporal structure into a single embedding, missing action ordering.
+          TCSA divides the motion into 1-second segments and computes segment-level cosine similarity with text embeddings via a pre-trained InfoNCE encoder.
+          This dense per-second reward captures fine-grained temporal correspondence inaccessible to global metrics, while remaining fully differentiable for RPG.
+        </p>
+      </div>
+      <div class="method-card">
+        <h3>Model-Agnostic Design</h3>
+        <p>
+          The same architecture, rewards, and training procedure apply to any generator &mdash; the only adaptations are the motion dimension D (263 or 201) and the FK module.
+          A single 17.7M-parameter policy adds just 2&thinsp;ms overhead and works as a plug-and-play post-hoc module across discrete VQ, continuous diffusion, latent diffusion, and LLM-guided generators.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section id="results">
+  <div class="container">
+    <h2>Quantitative Results</h2>
+
+    <h3>Main Results on DanceFit</h3>
+    <div class="table-wrapper">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th rowspan="2">Method</th>
+            <th colspan="2">Reconstruction</th>
+            <th colspan="4">Physical Plausibility</th>
+            <th colspan="4">Semantic (TCSA)</th>
+          </tr>
+          <tr>
+            <th>Rec-L1 &darr;</th>
+            <th>MPJPE &darr;</th>
+            <th>Skate &darr;</th>
+            <th>Pen. &darr;</th>
+            <th>Bone &darr;</th>
+            <th>Jerk &darr;</th>
+            <th>Sim &uarr;</th>
+            <th>R@1 &uarr;</th>
+            <th>R@5 &uarr;</th>
+            <th>R@10 &uarr;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- MoMask -->
+          <tr class="generator-header"><td colspan="11">MoMask (263D, discrete VQ latent)</td></tr>
+          <tr>
+            <td>Ground Truth</td>
+            <td>0.000</td><td>0.000</td><td>0.016</td><td>0.464</td><td>0.017</td><td>0.231</td><td>0.004</td><td>0.006</td><td>0.030</td><td>0.058</td>
+          </tr>
+          <tr>
+            <td>MoMask (Base)</td>
+            <td>1.023</td><td>19.72</td><td>0.159</td><td>15.48</td><td>0.290</td><td>0.444</td><td>0.018</td><td>0.010</td><td>0.042</td><td>0.074</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>+ Ours</strong></td>
+            <td><strong>0.621</strong></td><td><strong>7.04</strong></td><td><strong>0.041</strong></td><td><strong>7.77</strong></td><td><strong>0.170</strong></td><td><strong>0.345</strong></td><td><strong>0.022</strong></td><td>0.007</td><td>0.040</td><td><strong>0.080</strong></td>
+          </tr>
+          <tr class="delta-row">
+            <td><em>&Delta; (Ours vs. Base)</em></td>
+            <td><em>39.3%</em></td><td><em>64.3%</em></td><td><em>74.0%</em></td><td><em>49.8%</em></td><td><em>41.6%</em></td><td><em>22.3%</em></td><td><em>+26.2%</em></td><td>&mdash;</td><td>&mdash;</td><td><em>+8.1%</em></td>
+          </tr>
+          <!-- MDM -->
+          <tr class="generator-header"><td colspan="11">MDM (263D, continuous diffusion)</td></tr>
+          <tr>
+            <td>MDM (Base)</td>
+            <td>1.004</td><td>19.33</td><td>0.424</td><td>16.59</td><td>0.145</td><td>0.099</td><td>0.007</td><td>0.007</td><td>0.032</td><td>0.059</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>+ Ours</strong></td>
+            <td><strong>0.333</strong></td><td><strong>3.10</strong></td><td><strong>0.017</strong></td><td><strong>0.53</strong></td><td><strong>0.086</strong></td><td>0.123</td><td><strong>0.026</strong></td><td><strong>0.006</strong></td><td><strong>0.040</strong></td><td><strong>0.076</strong></td>
+          </tr>
+          <tr class="delta-row">
+            <td><em>&Delta; (Ours vs. Base)</em></td>
+            <td><em>66.8%</em></td><td><em>84.0%</em></td><td><em>96.0%</em></td><td><em>96.8%</em></td><td><em>40.7%</em></td><td><em>-24%</em></td><td><em>+271%</em></td><td>&mdash;</td><td><em>+25%</em></td><td><em>+28.8%</em></td>
+          </tr>
+          <!-- MLD -->
+          <tr class="generator-header"><td colspan="11">MLD (263D, latent diffusion) &mdash; zero-shot transfer</td></tr>
+          <tr>
+            <td>MLD (Base)</td>
+            <td>0.956</td><td>22.82</td><td>0.216</td><td>11.39</td><td>0.127</td><td>0.071</td><td>0.004</td><td>0.007</td><td>0.039</td><td>0.077</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>+ Ours</strong></td>
+            <td><strong>0.679</strong></td><td><strong>7.18</strong></td><td><strong>0.100</strong></td><td><strong>8.96</strong></td><td><strong>0.098</strong></td><td>0.176</td><td><strong>0.012</strong></td><td>0.007</td><td>0.037</td><td>0.073</td>
+          </tr>
+          <tr class="delta-row">
+            <td><em>&Delta; (Ours vs. Base)</em></td>
+            <td><em>29.0%</em></td><td><em>68.6%</em></td><td><em>53.7%</em></td><td><em>21.3%</em></td><td><em>22.6%</em></td><td><em>-148%</em></td><td><em>+210%</em></td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
+          </tr>
+          <!-- HY-Motion -->
+          <tr class="generator-header"><td colspan="11">HY-Motion (201D, continuous SMPL-H)</td></tr>
+          <tr>
+            <td>HY-Motion (Base)</td>
+            <td>1.061</td><td>0.960</td><td>0.000</td><td>0.002</td><td>0.000</td><td>0.010</td><td>-0.002</td><td>0.007</td><td>0.038</td><td>0.071</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>+ Ours</strong></td>
+            <td><strong>0.344</strong></td><td>0.622</td><td>0.000</td><td><strong>0.000</strong></td><td>0.000</td><td>0.010</td><td>0.052</td><td><strong>0.010</strong></td><td>0.053</td><td>0.109</td>
+          </tr>
+          <tr>
+            <td>+ Ours<sub>BM</sub></td>
+            <td>0.434</td><td><strong>0.580</strong></td><td>0.000</td><td>0.000</td><td>0.000</td><td>0.010</td><td><strong>0.057</strong></td><td>0.010</td><td><strong>0.063</strong></td><td><strong>0.120</strong></td>
+          </tr>
+          <tr class="delta-row">
+            <td><em>&Delta; (Ours vs. Base)</em></td>
+            <td><em>67.6%</em></td><td><em>35.2%</em></td><td>&mdash;</td><td><em>100%</em></td><td>&mdash;</td><td>&mdash;</td><td><em>+0.054</em></td><td><em>+42.9%</em></td><td><em>+39.5%</em></td><td><em>+53.5%</em></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>HumanML3D Benchmark Performance &amp; Component Analysis (MoMask 263D)</h3>
+    <div class="table-wrapper">
+      <table class="results-table ablation-table">
+        <thead>
+          <tr>
+            <th rowspan="2">Config</th>
+            <th colspan="4">HumanML3D Benchmark</th>
+            <th colspan="3">DanceFit</th>
+          </tr>
+          <tr>
+            <th>R@1 &uarr;</th>
+            <th>FID &darr;</th>
+            <th>MM-D &darr;</th>
+            <th>Div &rarr;</th>
+            <th>MPJPE &darr;</th>
+            <th>Skate &darr;</th>
+            <th>TCSA &uarr;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GT</td>
+            <td>.508</td><td>0.000</td><td>3.00</td><td>9.51</td><td>0.000</td><td>0.016</td><td>0.004</td>
+          </tr>
+          <tr>
+            <td>Base (MoMask)</td>
+            <td>.517</td><td>0.088</td><td>2.99</td><td>9.63</td><td>19.72</td><td>0.159</td><td>0.018</td>
+          </tr>
+          <tr>
+            <td>Sup. L1</td>
+            <td>.406</td><td>1.452</td><td>3.68</td><td>9.69</td><td>10.21</td><td>0.041</td><td>0.018</td>
+          </tr>
+          <tr class="fail-row">
+            <td>REINFORCE</td>
+            <td>.503</td><td>0.084</td><td>3.03</td><td>10.01</td><td>19.72</td><td>0.159</td><td>0.018</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>Ours (RPG)</strong></td>
+            <td>.446</td><td>0.855</td><td>3.37</td><td>9.19</td><td><strong>7.04</strong></td><td>0.041</td><td><strong>0.022</strong></td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>Ours<sub>BM</sub></strong></td>
+            <td><strong>.509</strong></td><td><strong>0.090</strong></td><td><strong>3.01</strong></td><td><strong>9.54</strong></td><td>11.88</td><td>0.139</td><td>0.019</td>
+          </tr>
+          <tr class="ablation-separator"><td colspan="8"></td></tr>
+          <tr>
+            <td>w/o HML-Mix</td>
+            <td>.129</td><td>38.94</td><td>7.26</td><td>4.42</td><td>2.30</td><td>0.009</td><td>0.013</td>
+          </tr>
+          <tr>
+            <td>w/o TCSA</td>
+            <td>.496</td><td>0.093</td><td>3.04</td><td>9.96</td><td>11.75</td><td>0.115</td><td>0.019</td>
+          </tr>
+          <tr>
+            <td>w/o &lambda;<sub>&delta;</sub></td>
+            <td>.435</td><td>0.888</td><td>3.45</td><td>9.63</td><td>9.19</td><td>0.056</td><td>0.020</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="results-highlights">
+      <div class="highlight-card">
+        <span class="highlight-number">64.3%</span>
+        <span class="highlight-label">MPJPE reduction<br>(MoMask)</span>
+      </div>
+      <div class="highlight-card">
+        <span class="highlight-number">96.0%</span>
+        <span class="highlight-label">Skating elimination<br>(MDM)</span>
+      </div>
+      <div class="highlight-card">
+        <span class="highlight-number">68.6%</span>
+        <span class="highlight-label">Zero-shot transfer<br>(MLD, MPJPE)</span>
+      </div>
+      <div class="highlight-card">
+        <span class="highlight-number">2 ms</span>
+        <span class="highlight-label">Inference overhead<br>(no simulator)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUALITATIVE ============ -->
+<section id="qualitative">
+  <div class="container">
+    <h2>Qualitative Comparisons</h2>
+    <p class="section-desc">Static keyframe comparisons showing Ground Truth, Base generator output, and our refined output. Each row corresponds to one text prompt; keyframes are sampled at uniform time intervals.</p>
+
+    <div class="tabs" data-tab-group="qualitative">
+      <button class="tab-btn active" data-tab="momask-263d">MoMask (263D)</button>
+      <button class="tab-btn" data-tab="mdm">MDM (263D)</button>
+      <button class="tab-btn" data-tab="mld">MLD (263D, zero-shot)</button>
+      <button class="tab-btn" data-tab="hymotion-201d">HY-Motion (201D)</button>
+    </div>
+
+    <div class="tab-panels" data-tab-group="qualitative">
+      <div class="tab-panel active" data-panel="momask-263d">
+        <div class="prompt-list">
+          <h4>Text Prompts (top to bottom)</h4>
+          <ol>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her feet hip-width apart, shoulders relaxed, and her weight evenly balanced as she faces forward with a confident, open posture. Her arms are bent at the elbows with hands gesturing outward, her head is slightly tilted, and she smiles warmly, radiating energy and inviting engagement.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 14 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The woman stands upright with her feet planted firmly on the ground, shoulders relaxed and squared, and her weight evenly distributed, giving her a balanced and confident posture. Her hands are clasped together at chest height, elbows bent and close to her body, while her head is slightly tilted forward and she smiles gently, radiating calm energy and poised readiness.</p>
+                <p><span class="sec-label">t=2s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a calm and confident presence. Her hands are gently clasped at chest level, elbows bent close to her body, while her feet are placed hip-width apart, giving her a balanced and composed stance.</p>
+                <p><span class="sec-label">t=3s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a sense of calm readiness and balance. Her hands are gently clasped at her midsection, elbows bent and close to her body, while her feet are planted hip-width apart, giving her a poised and inviting presence.</p>
+                <p><span class="sec-label">t=4s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a sense of calm balance and confidence. Her hands are gently clasped at her waist, elbows bent, while her feet are planted hip-width apart, and her facial expression is open and inviting, suggesting a poised and welcoming energy.</p>
+                <p><span class="sec-label">t=5s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a confident and open posture. Her right arm is bent at the elbow with her hand forming a thumbs-up gesture near her chest, while her left arm hangs naturally by her side, and her facial expression is friendly and engaged, suggesting a welcoming and positive energy.</p>
+                <p><span class="sec-label">t=6s</span> The woman stands upright with her weight evenly distributed, her torso facing forward and her posture confident, while her head is slightly tilted and her facial expression is open and engaging, with her neck elongated. Her right arm is bent at the elbow with her hand raised in a gentle pointing gesture, her left arm relaxed by her side, and her feet are planted firmly on the ground, giving her a balanced, energetic stance that conveys readiness and enthusiasm.</p>
+                <p><span class="sec-label">t=7s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and torso facing forward, exuding a confident and balanced posture. Her right arm is bent at the elbow with her hand raised in a gentle thumbs-up gesture, while her left arm rests naturally by her side, and her facial expression is open and engaging, suggesting a welcoming and energetic presence.</p>
+                <p><span class="sec-label">t=8s</span> The woman stands upright with her weight evenly distributed, her torso facing forward and her posture confident, while her head is slightly tilted and her facial expression is focused and engaged. Her right hand is raised with fingers forming a gesture near her chest, her left arm relaxed by her side, and her legs are straight with feet planted firmly, giving her stance a sense of stability and poised energy.</p>
+                <p><span class="sec-label">t=9s</span> The woman stands upright with her weight evenly distributed, her torso facing forward and her posture relaxed yet attentive, while her head is slightly tilted and her facial expression is calm and engaged, with her neck elongated. Her right arm is bent at the elbow with her hand gesturing upward in a gentle, open motion, while her left arm rests by her side, her hips and feet remain parallel and grounded, and her overall stance conveys a poised, steady energy with a subtle sense of invitation and rhythm.</p>
+                <p><span class="sec-label">t=10s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, while her head is slightly tilted and her facial expression is open and engaged, suggesting attentiveness and confidence. Her hands are gently clasped at her waist, elbows bent close to her body, and her feet are planted hip-width apart, conveying a sense of stability, calm energy, and poised readiness.</p>
+                <p><span class="sec-label">t=11s</span> The woman stands upright with her feet hip-width apart, shoulders relaxed, and her weight evenly distributed, suggesting a poised and balanced stance. Her hands are gently clasped at her midsection, elbows bent, while her head is held high with a calm, focused facial expression, indicating a composed and attentive energy.</p>
+                <p><span class="sec-label">t=12s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a sense of poised balance and calm confidence. Her hands are gently clasped at her midsection, elbows bent close to her body, while her head is slightly tilted and she smiles warmly, radiating approachable energy and steady composure.</p>
+                <p><span class="sec-label">t=13s</span> The woman stands upright with her weight evenly balanced, shoulders relaxed, and torso facing forward, while her head is slightly tilted and her facial expression is open and engaging, suggesting attentiveness and confidence. Her arms are bent at the elbows with both hands raised in front of her chest, palms facing inward and fingers loosely extended, while her feet are planted hip-width apart, giving her a poised and energetic stance that conveys readiness and enthusiasm.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The person stands confidently with a straight posture, feet slightly apart, and arms raised in a welcoming gesture, suggesting an open and engaging demeanor. Her facial expression is cheerful, with a slight tilt of the head, indicating enthusiasm and energy in her presentation.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 6 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The individual stands upright with a centered posture, feet firmly planted on the ground, and hands clasped together in front of the chest, suggesting a calm and composed stance. Her head is slightly tilted forward with a gentle smile, indicating a relaxed and confident demeanor.</p>
+                <p><span class="sec-label">t=2s</span> The individual stands upright with a centered posture, feet firmly planted, and hands clasped in front, suggesting a calm and composed demeanor. Her head is slightly tilted forward, with a focused expression, indicating attentiveness and readiness for action.</p>
+                <p><span class="sec-label">t=3s</span> The individual stands confidently with a slight forward lean, suggesting an eagerness to engage with the audience. Her arms are raised in an inviting gesture, while her facial expression radiates enthusiasm, creating a dynamic and energetic presence.</p>
+                <p><span class="sec-label">t=4s</span> The individual stands upright with a confident posture, feet firmly planted, and shoulders relaxed, suggesting a stable and balanced stance. Her hands are gently clasped in front of her, with a slight forward tilt of the head and a warm smile, conveying an inviting and engaging presence.</p>
+                <p><span class="sec-label">t=5s</span> The individual stands confidently with a straight posture, feet firmly planted, and a slight forward lean, suggesting readiness and engagement. Her right hand is raised with a thumbs-up gesture, while her left arm rests naturally by her side, conveying a sense of approval and encouragement.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her feet hip-width apart, shoulders relaxed, and her weight evenly distributed, facing forward with a confident and open posture. Her arms are bent at the elbows with hands gesturing slightly outward, her head is held high with a bright smile, and her overall stance radiates energy and readiness, suggesting she is about to begin or demonstrate a movement.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 14 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The woman stands upright with her feet planted firmly on the ground, her weight evenly distributed and her body facing forward in a balanced, confident stance. Her hands are clasped together at chest height, shoulders relaxed, and her head is slightly tilted with a gentle smile, conveying a calm and welcoming energy.</p>
+                <p><span class="sec-label">t=2s</span> The woman stands upright with her feet close together, shoulders relaxed, and her weight evenly balanced, facing forward with a confident and open posture. Her hands are gently clasped at chest level, elbows bent and close to her body, while her head is held high with a slight smile, projecting calm energy and poised attentiveness.</p>
+                <p><span class="sec-label">t=3s&ndash;4s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a confident and welcoming presence. Her hands are gently clasped at her midsection or waist, elbows bent, while her feet are planted hip-width apart, giving her a balanced and approachable stance.</p>
+                <p><span class="sec-label">t=5s&ndash;8s</span> The woman stands upright with her weight evenly distributed, her torso facing forward and her posture confident. She transitions through gestures &mdash; a thumbs-up, a gentle pointing motion, a pinching gesture &mdash; while her left arm rests naturally by her side. Her feet remain planted firmly for stability and poised energy.</p>
+                <p><span class="sec-label">t=9s&ndash;13s</span> The woman maintains her upright stance with arms transitioning to clasped hands at waist/chest level, then to both hands raised at chest level with palms inward and fingers loosely extended, conveying readiness and a welcoming stance throughout.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The person stands with feet planted wide apart, knees bent, and torso leaning slightly forward, suggesting a dynamic, athletic stance ready for lateral movement. Their arms extend outward with hands reaching toward the knees, shoulders squared, and head facing forward, conveying a sense of focus, balance, and energetic readiness.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 7 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The person stands with feet wide apart, knees bent, and leans forward at the hips, creating a dynamic, athletic posture that suggests readiness for movement. Their arms extend downward, hands reaching toward the floor, while the torso tilts forward and the head faces down, conveying a sense of focused energy and controlled balance.</p>
+                <p><span class="sec-label">t=2s</span> The figure stands upright with a slight forward lean, maintaining a strong, balanced stance as the torso twists gently to one side, suggesting dynamic engagement and readiness for movement. The left arm is bent and raised with a dumbbell near the shoulder, while the right arm extends downward.</p>
+                <p><span class="sec-label">t=3s</span> The person stands tall with their weight shifted slightly to one leg, torso upright and facing forward, while their left arm is extended straight overhead holding a dumbbell, creating a sense of upward reach and dynamic energy.</p>
+                <p><span class="sec-label">t=4s</span> The figure stands upright with a confident posture, weight balanced evenly on both feet. The right arm is bent with the hand holding a dumbbell near the shoulder, the left arm rests on the hip, shoulders squared, conveying a poised and energetic stance ready for movement.</p>
+                <p><span class="sec-label">t=5s</span> The figure stands with feet planted wide apart, knees slightly bent, and torso leaning subtly forward, creating a dynamic and balanced posture. Both arms are bent at the elbows with hands positioned near the hips.</p>
+                <p><span class="sec-label">t=6s</span> The figure stands with feet wide apart, knees bent, and leans deeply to one side, creating a dynamic diagonal line from the shoulders down to the opposite foot while gripping a weight in one hand.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The person lies flat on their stomach with their arms relaxed by their sides, palms facing upward, and their legs extended straight back, toes gently pointing away from the body. Their head is turned to the left, resting on the mat, with the neck relaxed and the facial expression calm, creating an overall sense of stillness, balance, and grounded energy.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 13 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s&ndash;4s</span> The person lies face down on the mat with body fully extended, arms relaxed at sides, palms facing upward, head gently turned to one side. The posture transitions subtly &mdash; the cheek rests on the mat, creating a sense of stillness and grounded energy with minimal movement.</p>
+                <p><span class="sec-label">t=5s&ndash;6s</span> The woman lies prone with her body elongated, legs extended straight back. Her torso is slightly lifted as elbows are bent tightly at her sides, palms pressing into the mat, creating a gentle arch in her upper back (Cobra-like preparation).</p>
+                <p><span class="sec-label">t=7s</span> The woman&rsquo;s body forms a straight line from shoulders to knees, with arms extended and hands pressed firmly into the mat in a modified plank position. Her hips are slightly lowered and knees hover just above the mat.</p>
+                <p><span class="sec-label">t=8s&ndash;10s</span> The person transitions to all fours &mdash; knees beneath hips, arms extended forward, back slightly rounded. The right knee lifts and moves inward, suggesting a controlled, flowing motion with gentle energy and rhythmic coordination.</p>
+                <p><span class="sec-label">t=11s&ndash;12s</span> The person moves through tabletop and extended child&rsquo;s pose: hips resting back toward heels, torso extended forward, arms reaching out with palms pressing into the mat. The head is lowered between the arms, neck relaxed, suggesting calm, grounded energy with a sense of lengthening and release.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her feet slightly apart, knees softly bent, and her weight evenly distributed, creating a grounded and balanced posture while her torso faces forward. Her hands are pressed together in front of her chest in a prayer gesture, shoulders relaxed, neck elongated, and her face displays a gentle, focused smile, suggesting calm energy and poised readiness.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 14 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s&ndash;4s</span> The woman stands upright with feet planted firmly, weight evenly distributed, prayer-like hands clasped at chest height. She transitions through subtle expressions &mdash; bright smiles, calm composure &mdash; while maintaining poised readiness and balanced energy.</p>
+                <p><span class="sec-label">t=5s&ndash;8s</span> Hands move from clasped at midsection to gently at chest level, elbows bent. Head tilts slightly, facial expressions shift between focused engagement and friendly openness, maintaining a calm, balanced stance throughout.</p>
+                <p><span class="sec-label">t=9s&ndash;10s</span> Arms transition: elbows bent, hands lifted near shoulder height, fingers relaxed. Head tilts slightly back with an open, inviting expression. The stance radiates energetic anticipation and rhythmic motion, suggesting she is about to begin dynamic movement.</p>
+                <p><span class="sec-label">t=11s&ndash;13s</span> The woman maintains her upright, balanced stance with knees slightly bent and weight distributed evenly. Her arms raise with elbows bent and hands open at chest level, fingers spread, conveying a lively, engaged energy as she prepares to transition into movement. Head slightly tilted back with a broad smile, fists playfully clenched, suggesting rhythmic enthusiasm.</p>
+              </div></details>
+            </li>
+          </ol>
+        </div>
+        <figure>
+          <img src="static/images/qualitative_263d.png" alt="MoMask 263D qualitative results" loading="lazy">
+        </figure>
+      </div>
+      <div class="tab-panel" data-panel="mdm">
+        <div class="prompt-list">
+          <h4>Text Prompts (top to bottom)</h4>
+          <ol>
+            <li>
+              <div class="prompt-head">&ldquo;The dancer stands with a slight forward lean, her body poised in a dynamic stance that suggests movement and energy. Her arms are raised and extended outward, creating a sense of flow and rhythm as her feet are firmly planted, ready to propel her into the next motion.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 11 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The dancer stands with a confident posture, slightly leaning to one side, which creates a dynamic balance that suggests movement and energy. Her head is tilted slightly, with an expressive facial expression that conveys emotion, while her arms are positioned in a way that enhances the sense of rhythm and flow in her stance.</p>
+                <p><span class="sec-label">t=2s</span> The dancer&rsquo;s posture is dynamic, with a slight lean to the left that suggests a powerful twist in the upper body, while the right arm is raised, creating a sense of upward motion. Her legs are positioned wide apart, with the left foot forward, indicating a strong foundation.</p>
+                <p><span class="sec-label">t=3s</span> The dancer stands confidently with a slight lean to the left, her body poised in a dynamic yet relaxed posture that suggests a playful energy. Her right arm is raised in an expressive gesture while her left hand rests on her hip.</p>
+                <p><span class="sec-label">t=4s</span> The dancer leans slightly forward, her body poised in a dynamic twist that suggests a playful energy as she engages with the space around her. Her left arm extends outward while her right hand rests on her hip.</p>
+                <p><span class="sec-label">t=5s</span> The figure stands confidently with a slight lean to the left, exuding a sense of playful energy as she points towards the viewer with a bright smile. Her right foot is firmly planted while her left leg is slightly bent, creating a dynamic balance.</p>
+                <p><span class="sec-label">t=6s&ndash;7s</span> The dancer&rsquo;s body leans slightly to the left, creating dynamic tension. Arms extend outward or gesture playfully near her face, emphasizing flow and rhythm while legs remain firmly planted.</p>
+                <p><span class="sec-label">t=8s</span> The figure stands confidently with a slight lean to one side, exuding poise and balance. Her head is tilted slightly, showcasing a playful expression, while her arms are positioned gracefully, enhancing the fluidity of her stance.</p>
+                <p><span class="sec-label">t=9s</span> The dancer&rsquo;s posture is dynamic, with a slight forward lean that suggests an energetic upward motion, while her arms are raised near her face, conveying excitement. Her feet are firmly planted, with a slight bend in her knees.</p>
+                <p><span class="sec-label">t=10s</span> The dancer stands with a confident posture, slightly leaning forward as her left arm is raised and her right arm is bent at the elbow, creating a dynamic contrast. Her legs are positioned with the left foot forward, suggesting a playful energy as she shifts her weight.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The figure stands upright with a slight forward lean, feet apart for stability, and appears to be shifting weight dynamically, suggesting a lively, energetic movement. Her right arm is raised and blurred in motion, while her head tilts slightly back, giving the impression of a rhythmic, expressive gesture as she maintains balance and coordination throughout her body.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 10 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The figure stands upright with a slight forward lean, feet close together, and knees bent, suggesting a springy, energetic jump or bounce, while the torso twists subtly to the left. The head tilts back with hair flying upward, the right arm bends and lifts toward the head, and the left arm swings outward.</p>
+                <p><span class="sec-label">t=2s</span> The figure stands upright with a slight forward lean, feet planted apart for stability, and her body angled slightly to the right. Her arms are raised and hands are clapped together in front of her face, with her head tilted slightly forward and hair swinging outward, conveying a burst of energetic motion.</p>
+                <p><span class="sec-label">t=3s</span> The dancer stands upright with her weight shifted slightly to one side, her torso angled forward and her head turned to follow the sweeping motion of her arms, which are extended outward in a dynamic, mid-swing gesture.</p>
+                <p><span class="sec-label">t=4s</span> The dancer&rsquo;s overall posture is lively and dynamic, with her torso leaning forward and her knees bent, creating a playful, bouncing stance that suggests she is in mid-motion, shifting her weight from side to side while maintaining balance.</p>
+                <p><span class="sec-label">t=5s&ndash;6s</span> Both dancers stand upright with torsos slightly angled and weight balanced on one leg, while the other leg kicks outward in a lively motion, creating dynamic rhythm. Their arms swing outward with bent elbows, shoulders relaxed.</p>
+                <p><span class="sec-label">t=7s</span> Both dancers lean slightly to their left with knees bent, feet apart, and torsos angled, creating a playful, off-balance stance that suggests a swaying motion. Their arms cross in front of their bodies at chest height.</p>
+                <p><span class="sec-label">t=8s</span> Both dancers are standing on their left legs with their right legs bent backward at the knee, creating a lively, dynamic posture as their torsos lean slightly forward. Their right arms are extended outward while their left arms are bent.</p>
+                <p><span class="sec-label">t=9s</span> Both dancers stand with torsos upright and slightly angled, weight shifted onto one leg. Their arms are bent and hands gesture outward at hip level, suggesting a moment of energetic transition and rhythmic movement to the side.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The dancer stands with her legs wide apart, knees bent, and her weight evenly distributed, creating a lively and balanced posture as she faces forward with a bright, open smile. Her arms are raised and bent at the elbows, hands flicked outward in a playful gesture, while her torso remains upright and her head is slightly tilted, radiating energetic movement and rhythmic confidence.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 10 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The dancer stands with her weight shifted slightly to one side, knees bent, and feet apart, creating a lively and balanced stance. Her right arm is raised with a pointed finger while her left hand rests on her hip, her head tilted slightly to the left, suggesting a playful and rhythmic motion to the right.</p>
+                <p><span class="sec-label">t=2s</span> The dancer stands with her body leaning slightly to her left, knees bent, and feet apart for a playful, grounded stance, while her torso twists gently to the right, creating a dynamic sense of movement. Her left hand rests on her hip and her right arm bends upward with a cheerful gesture.</p>
+                <p><span class="sec-label">t=3s</span> The person stands upright with a slight forward lean, her weight shifted onto her right leg while her left leg is lifted and bent, suggesting she is in mid-step. Her arms are raised in front of her with relaxed hands, giving the impression of a light, energetic motion.</p>
+                <p><span class="sec-label">t=4s&ndash;5s</span> The dancer stands with weight shifted, torso angled gently, and head tilted with a lively expression. Her arms swing outward in dynamic motion, maintaining rhythmic energy as she creates a sense of continuous side-to-side movement.</p>
+                <p><span class="sec-label">t=6s&ndash;7s</span> The dancer shifts weight to her left leg, leaning slightly while her right hip juts outward, creating a dynamic S-curve. Her right arm is bent and raised with a playful gesture near her head, suggesting bursts of energetic movement.</p>
+                <p><span class="sec-label">t=8s</span> The dancer stands upright with weight evenly distributed, feet hip-width apart, arms relaxed at sides with hands slightly lifted. Her gentle, confident expression suggests calm yet energetic anticipation for the next movement.</p>
+                <p><span class="sec-label">t=9s</span> The dancer stands with her knees bent and feet wide apart, leaning slightly to her left while maintaining a grounded, energetic stance that suggests a playful bounce. Her arms are crossed in front of her chest with hands open, shoulders lifted, and her head tilted to the right with a bright, expressive smile.</p>
+              </div></details>
+            </li>
+          </ol>
+        </div>
+        <figure>
+          <img src="static/images/qualitative_mdm.png" alt="MDM qualitative results" loading="lazy">
+        </figure>
+      </div>
+      <div class="tab-panel" data-panel="mld">
+        <div class="prompt-list">
+          <h4>Text Prompts (top to bottom)</h4>
+          <ol>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her weight evenly balanced, shoulders relaxed, and torso facing forward, exuding a poised and confident stance. Her hands are raised near her chest with fingers loosely curled, elbows bent outward, and her facial expression is open and engaged, suggesting she is about to begin or demonstrate a movement with controlled energy.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 7 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The woman stands upright with her weight evenly distributed, her torso facing forward and her posture open and balanced, while her head is slightly tilted and she smiles brightly, suggesting a welcoming and energetic demeanor. Her arms are raised with both hands mid-clap, shoulders relaxed, and her legs are set hip-width apart with feet firmly planted, conveying a sense of lively motion and rhythmic enthusiasm.</p>
+                <p><span class="sec-label">t=2s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a sense of balance and calm energy. Her hands are clasped together at chest height, elbows bent and close to her body, while her feet are planted hip-width apart, giving her a poised and approachable stance.</p>
+                <p><span class="sec-label">t=3s</span> The woman stands upright with her weight evenly distributed, shoulders relaxed, and her torso facing forward, exuding a calm and confident presence. Her hands are gently clasped together at chest level, elbows bent outward, while her feet are placed hip-width apart and her facial expression is neutral and attentive, suggesting she is about to speak or demonstrate a movement.</p>
+                <p><span class="sec-label">t=4s</span> The woman stands upright with her weight evenly distributed, feet hip-width apart, and her torso facing forward, exuding a sense of poised balance and readiness. Her hands are clasped together at chest level, shoulders relaxed, and her head is slightly tilted forward with a gentle smile, conveying calm energy and inviting engagement.</p>
+                <p><span class="sec-label">t=5s</span> The woman stands upright with her weight evenly distributed, feet hip-width apart, and her torso facing forward, exuding a sense of poised readiness and balance. Her hands are gently clasped at chest level, shoulders relaxed, and her head is slightly tilted with a soft, confident facial expression, suggesting calm anticipation and controlled energy.</p>
+                <p><span class="sec-label">t=6s</span> The woman stands upright with her feet hip-width apart, weight evenly distributed, and her torso facing forward, exuding a sense of poised readiness and balance. Her hands are clasped together at chest height, shoulders relaxed, and her head is slightly tilted with a bright, confident smile, radiating positive energy and anticipation.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The figure&rsquo;s overall posture suggests a dynamic, swirling motion, with the body oriented in a slight twist as if turning or spinning, maintaining balance through a centered stance. The implied energy radiates outward in a rhythmic, circular flow, with limbs and torso following the spiral&rsquo;s curve, creating a sense of continuous, fluid movement.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 14 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The person stands upright with a strong, balanced posture, facing forward, with their weight evenly distributed and their torso stable. Their right arm is raised overhead holding a dumbbell, while the left arm hangs naturally by their side, indicating a poised, energetic stance with a sense of upward motion and focus.</p>
+                <p><span class="sec-label">t=2s</span> The figure stands upright with a slight forward lean, weight balanced on one leg, and the torso subtly twisted to the left, suggesting a dynamic transition. Her right arm is extended outward and upward with a gentle bend, while her left arm is relaxed by her side, creating a sense of energetic readiness and controlled momentum.</p>
+                <p><span class="sec-label">t=3s</span> The person&rsquo;s body is angled sideways with a wide stance, knees bent, and weight shifted toward one leg, suggesting a dynamic lateral movement while maintaining a low center of gravity for balance. Their arms are extended outward, creating energy and rhythm.</p>
+                <p><span class="sec-label">t=4s&ndash;6s</span> The figure maintains a strong, athletic posture with various dumbbell positions &mdash; right arm raised overhead, left arm extended, or both arms lifting in controlled motion &mdash; suggesting a rhythmic, energetic exercise routine.</p>
+                <p><span class="sec-label">t=7s&ndash;9s</span> The person transitions through dynamic stances: feet wide apart with lateral movements, side lunges with torso leaning, and arms extending outward for balance. The overall motion suggests focused energy, controlled balance, and fluid lateral movement.</p>
+                <p><span class="sec-label">t=10s&ndash;13s</span> The figure maintains upright posture with slight forward lean, feet apart for stability. The torso twists subtly while arms alternate between raising dumbbells and extending outward, conveying a continuous sense of energetic readiness and rhythmic flow.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her feet close together, shoulders relaxed, and hands gently pressed to her chest, suggesting a poised and centered stance with her weight evenly distributed. Her head is held high with a neutral facial expression, and her body faces forward, indicating readiness for movement or transition into the next exercise.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 6 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The woman stands upright with her weight balanced evenly, her torso facing forward and her posture tall, while her hands are gently clasped together at chest height, suggesting a moment of pause or preparation. Her feet are close together with toes pointing forward, and her facial expression is focused and calm, indicating she is ready to transition smoothly into the next movement.</p>
+                <p><span class="sec-label">t=2s</span> The woman stands upright with her weight shifted slightly to one leg, her torso angled gently forward and her arms raised in front with relaxed, expressive hands, suggesting a lively and engaged stance. Her head is tilted slightly to the side with a bright, open expression.</p>
+                <p><span class="sec-label">t=3s</span> The woman stands upright with her weight evenly distributed, her torso facing forward and her posture tall, while her arms are lifted in front with elbows bent and hands gesturing in a loose, rhythmic motion. Her feet are close together, suggesting a lively, energetic movement as she prepares to transition.</p>
+                <p><span class="sec-label">t=4s</span> The woman stands upright with both arms bent at the elbows with palms facing upward, shoulders relaxed, and her feet planted hip-width apart, conveying a light, energetic rhythm as if about to start dancing or explaining something.</p>
+                <p><span class="sec-label">t=5s</span> The woman stands upright with feet hip-width apart. Her elbows are bent as she lifts both hands near her shoulders with relaxed fingers, her head held high and a bright smile on her face, suggesting lively energy and rhythmic movement.</p>
+              </div></details>
+            </li>
+          </ol>
+        </div>
+        <figure>
+          <img src="static/images/qualitative_mld.png" alt="MLD zero-shot qualitative results" loading="lazy">
+        </figure>
+      </div>
+      <div class="tab-panel" data-panel="hymotion-201d">
+        <div class="prompt-list">
+          <h4>Text Prompts (top to bottom)</h4>
+          <ol>
+            <li>
+              <div class="prompt-head">&ldquo;The person stands upright with their weight shifted onto their right leg, left leg crossing behind and slightly bent, creating a poised and elegant silhouette while facing directly toward the closed curtains. Their arms rest naturally by their sides, shoulders relaxed, and head held level, suggesting a calm, balanced stance with a gentle, unhurried energy.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 12 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The dancer stands upright with her weight slightly shifted to her right leg, her torso angled forward and her head tilted back as her hair swings outward, suggesting a quick, energetic movement. Her arms are bent at the elbows with hands loose and mid-air, while her left foot is planted and her right foot is lifted.</p>
+                <p><span class="sec-label">t=2s&ndash;3s</span> Both dancers stand upright with weight shifted slightly, torsos angled forward and heads tilted gently. Arms swing in various directions while maintaining rhythmic energy that propels them smoothly across the floor.</p>
+                <p><span class="sec-label">t=4s&ndash;5s</span> Both dancers lean slightly forward with knees bent, maintaining a low, energetic stance. Their arms are bent at the elbows with hands near their thighs, feet spaced apart and angled outward, giving the impression of a lively side-to-side motion.</p>
+                <p><span class="sec-label">t=6s&ndash;7s</span> The person on the left is crouched low with knees bent, leaning forward and reaching their right arm downward. The person on the right stands upright with a slight lean, lifting their right leg and swinging their left arm forward, exuding lively, rhythmic energy.</p>
+                <p><span class="sec-label">t=8s&ndash;9s</span> Both dancers are in a low, wide squat with torsos leaning slightly forward, maintaining strong balance. Arms are positioned differently &mdash; one resting on knee, other swinging across body &mdash; creating a sense of energetic movement and rhythmic flow.</p>
+                <p><span class="sec-label">t=10s&ndash;11s</span> Both dancers are crouched low with knees deeply bent, bodies leaning forward in a grounded, dynamic posture. Their arms extend outward in different configurations, gazes focused forward with determined expressions, enhancing intensity and anticipation.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her feet hip-width apart, shoulders relaxed, and her weight evenly distributed, facing forward with a confident and open posture. Her arms are bent at the elbows with hands gesturing slightly outward, her head is held high with a bright smile, and her overall stance radiates energy and readiness, suggesting she is about to begin or demonstrate a movement.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show full temporal prompt (same as MoMask sample 3)</summary></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her feet hip-width apart, shoulders relaxed, and her weight evenly balanced as she faces forward with a confident, open posture. Her arms are bent at the elbows with hands gesturing outward, her head is slightly tilted, and she smiles warmly, radiating energy and inviting engagement.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show full temporal prompt (same as MoMask sample 1)</summary></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The person stands confidently with a straight posture, feet slightly apart, and arms raised in a welcoming gesture, suggesting an open and engaging demeanor. Her facial expression is cheerful, with a slight tilt of the head, indicating enthusiasm and energy in her presentation.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show full temporal prompt (same as MoMask sample 2)</summary></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The individual stands upright with a confident posture, facing forward with a slight lean to the right, suggesting engagement and attentiveness. Her right hand is raised with a pointing gesture, while her left arm rests naturally by her side, and her feet are planted firmly, indicating stability and readiness.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show all 12 per-second descriptions</summary><div class="prompt-seconds">
+                <p><span class="sec-label">t=1s</span> The individual stands upright with a confident posture, slightly angled towards the camera, maintaining a balanced stance. Her right hand is raised with fingers forming a gesture, while her left arm rests naturally by her side, and her feet are firmly planted, suggesting stability and a poised energy.</p>
+                <p><span class="sec-label">t=2s</span> The individual stands upright with a confident posture, facing forward with a slight tilt of the head, suggesting attentiveness. Her right hand is raised with fingers slightly curled, while her left arm rests naturally by her side, indicating a poised and balanced stance.</p>
+                <p><span class="sec-label">t=3s</span> The woman stands upright with weight evenly distributed, shoulders relaxed, and torso facing forward. Her hands are gently clasped at her waist, elbows bent and close to her body, conveying calm, poised energy and a steady, welcoming presence.</p>
+                <p><span class="sec-label">t=4s&ndash;6s</span> The individual maintains a centered posture with feet firmly planted, hands gently clasped in front, calm facial expression. Transitions between approachable, welcoming gestures and confident pointing motions.</p>
+                <p><span class="sec-label">t=7s&ndash;8s</span> The person stands confidently, feet shoulder-width apart, hands clasped together at chest level suggesting a welcoming demeanor. Head slightly tilted with a warm smile, indicating approachability and enthusiasm.</p>
+                <p><span class="sec-label">t=9s&ndash;11s</span> The individual transitions through dynamic poses: slight forward lean suggesting engagement, right hand raised with a pointed finger or gentle fist, left hand resting on hip, conveying a lively, energetic stance with focus and readiness.</p>
+              </div></details>
+            </li>
+            <li>
+              <div class="prompt-head">&ldquo;The woman stands upright with her weight evenly balanced, shoulders relaxed, and torso facing forward, exuding a poised and confident stance. Her hands are raised near her chest with fingers loosely curled, elbows bent outward, and her facial expression is open and engaged, suggesting she is about to begin a movement with controlled energy.&rdquo;</div>
+              <details class="prompt-expand"><summary>Show full temporal prompt (same as MLD sample 1)</summary></details>
+            </li>
+          </ol>
+        </div>
+        <figure>
+          <img src="static/images/qualitative_201d.png" alt="HY-Motion 201D qualitative results" loading="lazy">
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MOTION GALLERY ============ -->
+<section id="gallery">
+  <div class="container">
+    <h2>Motion Gallery</h2>
+    <p class="section-desc">Animated comparisons showing Ground Truth (GT), Base generator output, and our corrected output side-by-side. Each GIF shows the full motion sequence.</p>
+
+    <div class="tabs" data-tab-group="gallery">
+      <button class="tab-btn active" data-tab="gal-momask">MoMask</button>
+      <button class="tab-btn" data-tab="gal-mdm">MDM</button>
+      <button class="tab-btn" data-tab="gal-mld">MLD</button>
+      <button class="tab-btn" data-tab="gal-hymotion">HY-Motion</button>
+    </div>
+
+    <div class="tab-panels" data-tab-group="gallery">
+      <div class="tab-panel active" data-panel="gal-momask">
+        <div class="gif-grid">
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_00248.gif" alt="MoMask sample 00248" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_00430.gif" alt="MoMask sample 00430" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_00729.gif" alt="MoMask sample 00729" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_00809.gif" alt="MoMask sample 00809" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_00838.gif" alt="MoMask sample 00838" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_01038.gif" alt="MoMask sample 01038" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_01859.gif" alt="MoMask sample 01859" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_01941.gif" alt="MoMask sample 01941" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_02007.gif" alt="MoMask sample 02007" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/momask/momask_02051.gif" alt="MoMask sample 02051" class="lazy-gif"></div>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="gal-mdm">
+        <div class="gif-grid">
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_00372.gif" alt="MDM sample 00372" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_00728.gif" alt="MDM sample 00728" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_00839.gif" alt="MDM sample 00839" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_00861.gif" alt="MDM sample 00861" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_01014.gif" alt="MDM sample 01014" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_01264.gif" alt="MDM sample 01264" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_01401.gif" alt="MDM sample 01401" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_01692.gif" alt="MDM sample 01692" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_01914.gif" alt="MDM sample 01914" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mdm/mdm_02261.gif" alt="MDM sample 02261" class="lazy-gif"></div>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="gal-mld">
+        <div class="gif-grid">
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_00040.gif" alt="MLD sample 00040" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_00716.gif" alt="MLD sample 00716" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_00976.gif" alt="MLD sample 00976" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01048.gif" alt="MLD sample 01048" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01382.gif" alt="MLD sample 01382" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01491.gif" alt="MLD sample 01491" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01777.gif" alt="MLD sample 01777" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01863.gif" alt="MLD sample 01863" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01875.gif" alt="MLD sample 01875" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/mld/mld_01930.gif" alt="MLD sample 01930" class="lazy-gif"></div>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="gal-hymotion">
+        <div class="gif-grid">
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_00520.gif" alt="HY-Motion sample 00520" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_00685.gif" alt="HY-Motion sample 00685" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_00847.gif" alt="HY-Motion sample 00847" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_00869.gif" alt="HY-Motion sample 00869" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_01162.gif" alt="HY-Motion sample 01162" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_01743.gif" alt="HY-Motion sample 01743" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_01758.gif" alt="HY-Motion sample 01758" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_01777.gif" alt="HY-Motion sample 01777" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_02112.gif" alt="HY-Motion sample 02112" class="lazy-gif"></div>
+          <div class="gif-item"><img data-src="static/gifs/hymotion/hymotion_02192.gif" alt="HY-Motion sample 02192" class="lazy-gif"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPARISON TABLE ============ -->
+<section id="comparison">
+  <div class="container">
+    <h2>Comparison with Prior Methods</h2>
+    <div class="table-wrapper">
+      <table class="results-table comparison-table">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Frozen Gen.</th>
+            <th>Physics</th>
+            <th>Semantics</th>
+            <th>Single-Pass</th>
+            <th>Simulator</th>
+            <th>FID*</th>
+            <th>Infer.</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Morph</td>
+            <td class="no-cell">&times;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td class="no-cell">&times;</td>
+            <td>Train</td>
+            <td>0.041</td>
+            <td>~sec</td>
+          </tr>
+          <tr>
+            <td>Morph (frozen)</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td class="no-cell">&times;</td>
+            <td>Train</td>
+            <td>0.074</td>
+            <td>~sec</td>
+          </tr>
+          <tr>
+            <td>PHC</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td class="yes-cell">&check;</td>
+            <td><strong>Required</strong></td>
+            <td>0.183</td>
+            <td>~sec</td>
+          </tr>
+          <tr>
+            <td>InstructMotion</td>
+            <td class="no-cell">&times;</td>
+            <td class="no-cell">&times;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td>&mdash;</td>
+            <td>0</td>
+          </tr>
+          <tr>
+            <td>MotionRL</td>
+            <td class="no-cell">&times;</td>
+            <td class="no-cell">&times;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td>0.048</td>
+            <td>0</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>Ours<sub>BM</sub></strong></td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td><strong>0.090</strong></td>
+            <td><strong>2 ms</strong></td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>Ours</strong></td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="yes-cell">&check;</td>
+            <td class="no-cell">&times;</td>
+            <td>0.855</td>
+            <td><strong>2 ms</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">FID*: self-reported on HumanML3D (not directly comparable across methods). Infer.: inference overhead per sample.</p>
+  </div>
+</section>
+
+<!-- ============ BIBTEX ============ -->
+<section id="bibtex">
+  <div class="container">
+    <h2>BibTeX</h2>
+    <div class="bibtex-wrapper">
+      <button class="copy-btn" id="copy-bibtex" title="Copy to clipboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>Copy</span>
+      </button>
+      <pre><code id="bibtex-code">@article{motionrefine-r0-2026,
+  title   = {MotionRefine-R0: Reinforcing 3D Human Motion Generation
+             with Physical and Semantic Refinement},
+  author  = {Anonymous Authors},
+  journal = {arXiv preprint},
+  year    = {2026}
+}</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="container">
+    <p>MotionRefine-R0</p>
+  </div>
+</footer>
+
+<script src="static/js/main.js"></script>
+</body>
+</html>
