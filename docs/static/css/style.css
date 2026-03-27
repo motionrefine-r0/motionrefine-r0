@@ -18,8 +18,8 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --max-width: 1060px;
   /* Typography aligned with Quantitative Results block */
-  --fs-h2: 1.2rem;
-  --fs-h3: 0.9rem;
+  --fs-h2: 1.38rem;
+  --fs-h3: 1.05rem;
   --fs-table: 0.7rem;
   --fs-body: 0.72rem;
   --fs-hero-title: 1.28rem;
@@ -795,7 +795,7 @@ footer {
   }
 
   h2 {
-    font-size: 1.1rem;
+    font-size: 1.22rem;
   }
 
   section {
